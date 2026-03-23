@@ -1,0 +1,46 @@
+import type { TowerDef } from './types';
+
+export const TOWER_DEFS: Record<string, TowerDef> = {
+  scratchingPost: {
+    id: 'scratchingPost',
+    name: 'Scratching Post',
+    cost: 50,
+    range: 8,
+    damage: 10,
+    fireRate: 2,
+    projectileSpeed: 30,
+    color: '#c4873b',
+  },
+  yarnLauncher: {
+    id: 'yarnLauncher',
+    name: 'Yarn Launcher',
+    cost: 75,
+    range: 12,
+    damage: 5,
+    fireRate: 1,
+    projectileSpeed: 20,
+    color: '#e85d75',
+    special: 'slow',
+  },
+  laserPointer: {
+    id: 'laserPointer',
+    name: 'Laser Pointer',
+    cost: 150,
+    range: 20,
+    damage: 30,
+    fireRate: 0.3,
+    projectileSpeed: 60,
+    color: '#ff0000',
+  },
+  catnipBomb: {
+    id: 'catnipBomb',
+    name: 'Catnip Bomb',
+    cost: 200,
+    range: 6,
+    damage: 15,
+    fireRate: 0.5,
+    projectileSpeed: 15,
+    color: '#4ade80',
+    special: 'aoe',
+  },
+};
