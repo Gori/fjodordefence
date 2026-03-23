@@ -108,7 +108,7 @@ function processData(data) {
         if (tags['building:levels']) height = parseInt(tags['building:levels']) * 3.5;
         else if (tags['building:height']) height = parseFloat(tags['building:height']);
         else height = 10 + (el.id % 10) * 1.5;
-        const gameHeight = Math.max(0.3, Math.min(3.5, height * 0.12));
+        const gameHeight = Math.max(0.3, height * 0.12);
 
         buildings.push({ id: el.id, coords, height: Math.round(gameHeight * 100) / 100 });
       }
@@ -132,26 +132,23 @@ function processData(data) {
     if (tags.building) {
       if (coords.length < 3) continue;
 
-      // Determine building height
+      // Building height: levels × 3m, or based on footprint size
       let height;
       if (tags['building:levels']) {
-        height = parseInt(tags['building:levels']) * 3.5;
+        height = parseInt(tags['building:levels']) * 3;
       } else if (tags['building:height']) {
         height = parseFloat(tags['building:height']);
       } else {
-        // Use building type for default heights
-        switch (tags.building) {
-          case 'church': height = 25; break;
-          case 'industrial': height = 12; break;
-          case 'garage': case 'shed': height = 4; break;
-          case 'house': height = 9; break;
-          case 'apartments': height = 18; break;
-          default: height = 10 + (el.id % 10) * 1.5; break;
-        }
+        // Estimate from footprint area
+        const area = Math.abs(coords.reduce((a, c, i, arr) => {
+          const j = (i+1) % arr.length;
+          return a + c[0]*arr[j][1] - arr[j][0]*c[1];
+        }, 0)) / 2;
+        height = area < 0.3 ? 1 : 15; // small footprint = 1m, otherwise 5 floors
       }
 
       // Scale to game world (buildings should be ~0.5-3 units tall in a 100-unit world)
-      const gameHeight = Math.max(0.3, Math.min(3.5, height * 0.12));
+      const gameHeight = Math.max(0.3, height * 0.12);
 
       buildings.push({
         id: el.id,

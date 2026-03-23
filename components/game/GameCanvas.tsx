@@ -7,6 +7,7 @@ import { PathRenderer } from './PathRenderer';
 import { Towers } from './Tower';
 import { Enemies } from './Enemy';
 import { Projectiles } from './Projectile';
+import { TreeMeshes } from './Trees';
 import { useGameStore } from '@/lib/store';
 import * as THREE from 'three';
 
@@ -70,6 +71,7 @@ export function GameCanvas() {
       <hemisphereLight args={['#99bbdd', '#554433', 0.35]} />
 
       <Map />
+      <TreeMeshes />
       <PathRenderer />
       <Towers />
       <Enemies />

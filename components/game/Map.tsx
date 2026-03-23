@@ -23,6 +23,8 @@ interface MapData {
   waterAreas: { coords: [number, number][] }[];
 }
 
+interface LandZone { type: string; coords: [number, number][]; }
+
 // ── Stockholm building color palette ──────────────────────────────────
 const STOCKHOLM_COLORS = [
   new THREE.Color('#c9a84c'), new THREE.Color('#c47a6b'),
@@ -76,11 +78,13 @@ function buildBuildings(buildings: BuildingData[]): {
         bevelEnabled: false,
       });
       wallGeo.rotateX(-Math.PI / 2);
-      // Raise building to terrain elevation
-      let bsx = 0, bsz = 0;
-      for (const [x, z] of building.coords) { bsx += x; bsz += z; }
-      const terrainY = getElevation(bsx / building.coords.length, bsz / building.coords.length);
-      wallGeo.translate(0, terrainY, 0);
+      // Raise building to LOWEST elevation beneath it (avoids floating on cliffs)
+      let minElev = Infinity;
+      for (const [x, z] of building.coords) {
+        const e = getElevation(x, z);
+        if (e < minElev) minElev = e;
+      }
+      wallGeo.translate(0, minElev, 0);
 
       // Vertex colors
       const color = STOCKHOLM_COLORS[building.id % STOCKHOLM_COLORS.length];
@@ -253,15 +257,20 @@ export function Map() {
   const money = useGameStore((s) => s.money);
 
   const [mapData, setMapData] = useState<MapData | null>(null);
+  const [landZones, setLandZones] = useState<LandZone[]>([]);
   const [hoverPos, setHoverPos] = useState<{ x: number; z: number } | null>(null);
   const [canPlace, setCanPlace] = useState(false);
   const [buildingsHovered, setBuildingsHovered] = useState(false);
 
   useEffect(() => {
-    fetch('/data/sodermalm.json?v=4')
+    fetch('/data/sodermalm.json?v=8')
       .then((r) => r.json())
       .then((data: MapData) => setMapData(data))
       .catch((err) => console.error('Failed to load map data:', err));
+    fetch('/data/landuse.json')
+      .then((r) => r.json())
+      .then((data: LandZone[]) => setLandZones(data))
+      .catch(() => {});
   }, []);
 
   const isPlacing = selectedTowerDef && (phase === 'playing' || phase === 'between-waves');
@@ -342,53 +351,79 @@ export function Map() {
     ] as [number, number]);
 
     // High-res terrain mesh that follows real elevation
-    const gridRes = 60;
-    const size = 130;
+    // Colored by land use: roads=gray, parks=green, urban=beige/gray, water=purple/blue
+    const gridRes = 150;
+    const size = 300;
     const geo = new THREE.PlaneGeometry(size, size, gridRes, gridRes);
     geo.rotateX(-Math.PI / 2);
 
     const pos = geo.attributes.position;
     const colors = new Float32Array(pos.count * 3);
-    const landColor = new THREE.Color('#3a5a30');
-    const shoreColor = new THREE.Color('#2a4a3a');
-    const waterColor = new THREE.Color('#2a1a58');
+    const ZONE_COLORS: Record<string, THREE.Color> = {
+      park: new THREE.Color('#3a5a30'),
+      garden: new THREE.Color('#3a5a30'),
+      grass: new THREE.Color('#4a6a38'),
+      forest: new THREE.Color('#2a4a20'),
+      scrub: new THREE.Color('#3a5528'),
+      allotments: new THREE.Color('#4a6a3a'),
+      cemetery: new THREE.Color('#2a4028'),
+      playground: new THREE.Color('#8a7a60'),
+      pitch: new THREE.Color('#4a7a3a'),
+      rock: new THREE.Color('#7a7570'),
+      beach: new THREE.Color('#c0b090'),
+      residential: new THREE.Color('#656055'),
+      commercial: new THREE.Color('#5a5550'),
+      railway: new THREE.Color('#4a4540'),
+      construction: new THREE.Color('#7a7060'),
+    };
+    const urbanColor = new THREE.Color('#606060');
+    const waterColor = new THREE.Color('#1a3060');
 
-    const buildingCenters: [number, number][] = [];
+    // Build zone polygons for point-in-polygon testing
+    const zonePolys: { type: string; coords: [number, number][] }[] = [];
+    for (const z of landZones) {
+      if (z.coords.length >= 3) zonePolys.push(z);
+    }
+    // Also add parks from mapData
     if (mapData) {
-      for (const b of mapData.buildings) {
-        let sx = 0, sz = 0;
-        for (const [x, z] of b.coords) { sx += x; sz += z; }
-        buildingCenters.push([sx / b.coords.length, sz / b.coords.length]);
+      for (const park of mapData.parks) {
+        if (park.coords.length >= 3) zonePolys.push({ type: 'park', coords: park.coords });
       }
     }
-    function isNearBuilding(x: number, z: number, radius: number): boolean {
-      for (const [bx, bz] of buildingCenters) {
-        if (Math.abs(bx - x) < radius && Math.abs(bz - z) < radius) return true;
+
+    function pointInPoly(px: number, pz: number, poly: [number, number][]): boolean {
+      let inside = false;
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const [xi, zi] = poly[i];
+        const [xj, zj] = poly[j];
+        if ((zi > pz) !== (zj > pz) && px < ((xj - xi) * (pz - zi)) / (zj - zi) + xi) {
+          inside = !inside;
+        }
       }
-      return false;
+      return inside;
+    }
+
+    function getZoneType(px: number, pz: number): string | null {
+      for (const zone of zonePolys) {
+        if (pointInPoly(px, pz, zone.coords)) return zone.type;
+      }
+      return null;
     }
 
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i);
       const z = pos.getZ(i);
       const elev = getElevation(x, z);
-      const nearBuilding = isNearBuilding(x, z, 8);
-      const isLand = elev > 0.2 || nearBuilding;
+      const isLand = elev > 0.3;
       const groundY = isLand ? Math.max(elev, 0.1) - 0.15 : -0.35;
       pos.setY(i, groundY);
 
-      // Gradient: water → shore → land
       let c: THREE.Color;
       if (!isLand) {
         c = waterColor;
-      } else if (elev < 0.3) {
-        const t = Math.max(0, elev) / 0.3;
-        c = waterColor.clone().lerp(shoreColor, t);
-      } else if (elev < 0.8) {
-        const t = (elev - 0.3) / 0.5;
-        c = shoreColor.clone().lerp(landColor, t);
       } else {
-        c = landColor;
+        const zone = getZoneType(x, z);
+        c = (zone && ZONE_COLORS[zone]) ? ZONE_COLORS[zone] : urbanColor;
       }
 
       colors[i * 3] = c.r;
@@ -399,18 +434,18 @@ export function Map() {
     geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
     geo.computeVertexNormals();
     return geo;
-  }, [mapData]);
+  }, [mapData, landZones]);
 
   // ── Process OSM data into geometry ──────────────────────────────
   const geos = useMemo(() => {
     if (!mapData) return null;
 
-    // Show ALL buildings — only exclude clearly other islands (Gamla Stan north of Södermalm)
+    // Exclude other islands (Gamla Stan) and tiny buildings (sheds, garages)
     const sodermalm = mapData.buildings.filter(b => {
       let sz = 0;
       for (const [, z] of b.coords) sz += z;
-      const cz = sz / b.coords.length;
-      if (cz < -26) return false; // Gamla Stan
+      if (sz / b.coords.length < -26) return false;
+      // No size filter — keep all buildings including kolonistugor
       return true;
     });
 
