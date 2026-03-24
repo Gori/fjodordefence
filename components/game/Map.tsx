@@ -13,7 +13,7 @@ import { getElevation } from '@/lib/elevation';
 import type { ThreeEvent } from '@react-three/fiber';
 
 // ── Types ──────────────────────────────────────────────────────────────
-interface BuildingData { id: number; coords: [number, number][]; height: number; }
+interface BuildingData { id: number; coords: [number, number][]; height: number; type: string; }
 interface RoadData { coords: [number, number][]; width: number; importance: number; name: string | null; }
 interface ParkData { coords: [number, number][]; }
 interface MapData {
@@ -26,13 +26,51 @@ interface MapData {
 
 interface LandZone { type: string; coords: [number, number][]; }
 
-// ── Stockholm building color palette ──────────────────────────────────
-const STOCKHOLM_COLORS = [
-  new THREE.Color('#c9a84c'), new THREE.Color('#c47a6b'),
-  new THREE.Color('#a85a40'), new THREE.Color('#d8cdb8'),
-  new THREE.Color('#8a857e'), new THREE.Color('#b8945c'),
-  new THREE.Color('#cc9966'), new THREE.Color('#9b7653'),
-];
+// ── Building colors by type ───────────────────────────────────────────
+const BUILDING_TYPE_COLORS: Record<string, THREE.Color> = {
+  apartments:      new THREE.Color('#c9a84c'),  // ochre/yellow — most of Södermalm
+  residential:     new THREE.Color('#c4976b'),  // warm tan
+  house:           new THREE.Color('#c4976b'),
+  detached:        new THREE.Color('#c4976b'),
+  semidetached_house: new THREE.Color('#c4976b'),
+  allotment_house: new THREE.Color('#8aaa70'),  // muted green — garden cottages
+  office:          new THREE.Color('#9098a8'),  // blue-gray
+  commercial:      new THREE.Color('#9098a8'),
+  retail:          new THREE.Color('#b8946a'),  // warm brown
+  hotel:           new THREE.Color('#c8a878'),  // golden
+  industrial:      new THREE.Color('#808080'),  // neutral gray
+  shed:            new THREE.Color('#7a7a6a'),  // dark gray-green
+  garage:          new THREE.Color('#7a7a6a'),
+  garages:         new THREE.Color('#7a7a6a'),
+  school:          new THREE.Color('#c8b070'),  // sandy yellow
+  kindergarten:    new THREE.Color('#c8b070'),
+  university:      new THREE.Color('#c8b070'),
+  church:          new THREE.Color('#d8cdb8'),  // cream/stone
+  cathedral:       new THREE.Color('#d8cdb8'),
+  chapel:          new THREE.Color('#d8cdb8'),
+  mosque:          new THREE.Color('#d8cdb8'),
+  hospital:        new THREE.Color('#d4d4d4'),  // white
+  palace:          new THREE.Color('#d8c8a0'),  // pale gold
+  government:      new THREE.Color('#b0a890'),  // stone
+  public:          new THREE.Color('#b0a890'),
+  civic:           new THREE.Color('#b0a890'),
+  theatre:         new THREE.Color('#c0a080'),  // warm terracotta
+  museum:          new THREE.Color('#c0a080'),
+  stadium:         new THREE.Color('#90a080'),  // sage
+  sports_centre:   new THREE.Color('#90a080'),
+  sports_hall:     new THREE.Color('#90a080'),
+  grandstand:      new THREE.Color('#90a080'),
+  train_station:   new THREE.Color('#a09090'),  // gray-mauve
+  transportation:  new THREE.Color('#a09090'),
+  ship:            new THREE.Color('#606878'),  // dark blue-gray
+  boat:            new THREE.Color('#606878'),
+  construction:    new THREE.Color('#a09060'),  // dusty yellow
+  kiosk:           new THREE.Color('#b89868'),  // light brown
+  service:         new THREE.Color('#908880'),  // warm gray
+  roof:            new THREE.Color('#888078'),
+  yes:             new THREE.Color('#b8a088'),  // default warm beige
+};
+const DEFAULT_BUILDING_COLOR = new THREE.Color('#b8a088');
 
 const ROOF_COLORS = [
   new THREE.Color('#6b5a48'), new THREE.Color('#5a4a3a'),
@@ -87,8 +125,25 @@ function buildBuildings(buildings: BuildingData[]): {
       }
       wallGeo.translate(0, minElev, 0);
 
-      // Vertex colors
-      const color = STOCKHOLM_COLORS[building.id % STOCKHOLM_COLORS.length];
+      // Vertex colors based on building type
+      // Residential buildings get varied warm tones (like the old Stockholm palette)
+      const isResidential = ['apartments', 'residential', 'house', 'detached', 'semidetached_house', 'yes'].includes(building.type);
+      let color: THREE.Color;
+      if (isResidential) {
+        const RESIDENTIAL_PALETTE = [
+          new THREE.Color('#c9a84c'), // ochre
+          new THREE.Color('#c4976b'), // salmon tan
+          new THREE.Color('#b8945c'), // warm amber
+          new THREE.Color('#cc9966'), // golden brown
+          new THREE.Color('#c47a6b'), // dusty rose
+          new THREE.Color('#d8cdb8'), // cream
+          new THREE.Color('#b89070'), // terracotta
+          new THREE.Color('#c4a872'), // sandy gold
+        ];
+        color = RESIDENTIAL_PALETTE[building.id % RESIDENTIAL_PALETTE.length];
+      } else {
+        color = BUILDING_TYPE_COLORS[building.type] || DEFAULT_BUILDING_COLOR;
+      }
       const wallColors = new Float32Array(wallGeo.attributes.position.count * 3);
       for (let i = 0; i < wallGeo.attributes.position.count; i++) {
         const y = wallGeo.attributes.position.getY(i);
@@ -261,10 +316,9 @@ export function Map() {
   const [landZones, setLandZones] = useState<LandZone[]>([]);
   const [hoverPos, setHoverPos] = useState<{ x: number; z: number } | null>(null);
   const [canPlace, setCanPlace] = useState(false);
-  const [buildingsHovered, setBuildingsHovered] = useState(false);
 
   useEffect(() => {
-    fetch('/data/sodermalm.json?v=8')
+    fetch('/data/sodermalm.json?v=11')
       .then((r) => r.json())
       .then((data: MapData) => setMapData(data))
       .catch((err) => console.error('Failed to load map data:', err));
@@ -298,14 +352,11 @@ export function Map() {
 
   const handlePointerLeave = () => setHoverPos(null);
 
-  // Building materials with enemy-proximity flattening
   const westMat = useFlattenMaterial({
-    vertexColors: true, roughness: 0.75, transparent: true,
-    opacity: buildingsHovered ? 0.75 : 1, side: THREE.DoubleSide,
+    vertexColors: true, roughness: 0.75, side: THREE.DoubleSide,
   });
   const eastMat = useFlattenMaterial({
-    vertexColors: true, roughness: 0.75, transparent: true,
-    opacity: buildingsHovered ? 0.75 : 1, side: THREE.DoubleSide,
+    vertexColors: true, roughness: 0.75, side: THREE.DoubleSide,
   });
 
   // ── Island/shore shape geometry ──────────────────────────────────
@@ -533,16 +584,12 @@ export function Map() {
 
       {/* ── Buildings (flatten near enemies) ── */}
       {geos?.westWalls && (
-        <mesh geometry={geos.westWalls}
-          onPointerEnter={() => setBuildingsHovered(true)}
-          onPointerLeave={() => setBuildingsHovered(false)}>
+        <mesh geometry={geos.westWalls}>
           <meshStandardMaterial {...westMat.props} />
         </mesh>
       )}
       {geos?.eastWalls && (
-        <mesh geometry={geos.eastWalls}
-          onPointerEnter={() => setBuildingsHovered(true)}
-          onPointerLeave={() => setBuildingsHovered(false)}>
+        <mesh geometry={geos.eastWalls}>
           <meshStandardMaterial {...eastMat.props} />
         </mesh>
       )}

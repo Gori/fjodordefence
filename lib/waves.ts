@@ -2,39 +2,37 @@ import type { WaveConfig } from './types';
 
 export const WAVES: WaveConfig[] = [
   {
-    // Wave 1: Simple intro - rats on Götgatan only
+    // Wave 1: Simple intro
     entries: [
       { enemyDefId: 'rat', count: 6, pathIndex: 0, spawnInterval: 1.2, startDelay: 0 },
     ],
   },
   {
-    // Wave 2: Rats on two paths
+    // Wave 2: More rats
     entries: [
-      { enemyDefId: 'rat', count: 5, pathIndex: 0, spawnInterval: 1.0, startDelay: 0 },
-      { enemyDefId: 'rat', count: 5, pathIndex: 1, spawnInterval: 1.0, startDelay: 2 },
+      { enemyDefId: 'rat', count: 10, pathIndex: 0, spawnInterval: 1.0, startDelay: 0 },
     ],
   },
   {
-    // Wave 3: More rats, faster, all paths
+    // Wave 3: Rats and pigeons
     entries: [
-      { enemyDefId: 'rat', count: 6, pathIndex: 0, spawnInterval: 0.8, startDelay: 0 },
-      { enemyDefId: 'rat', count: 4, pathIndex: 1, spawnInterval: 0.8, startDelay: 1 },
-      { enemyDefId: 'rat', count: 4, pathIndex: 2, spawnInterval: 0.8, startDelay: 3 },
+      { enemyDefId: 'rat', count: 8, pathIndex: 0, spawnInterval: 0.8, startDelay: 0 },
+      { enemyDefId: 'pigeon', count: 4, pathIndex: 0, spawnInterval: 1.5, startDelay: 3 },
     ],
   },
   {
-    // Wave 4: Introduce pigeons
+    // Wave 4: Mixed
     entries: [
-      { enemyDefId: 'rat', count: 8, pathIndex: 0, spawnInterval: 0.7, startDelay: 0 },
-      { enemyDefId: 'pigeon', count: 4, pathIndex: 1, spawnInterval: 1.5, startDelay: 2 },
+      { enemyDefId: 'rat', count: 10, pathIndex: 0, spawnInterval: 0.7, startDelay: 0 },
+      { enemyDefId: 'pigeon', count: 6, pathIndex: 0, spawnInterval: 1.2, startDelay: 2 },
     ],
   },
   {
-    // Wave 5: The big one - mixed enemies, all paths
+    // Wave 5: The big one
     entries: [
-      { enemyDefId: 'rat', count: 8, pathIndex: 0, spawnInterval: 0.6, startDelay: 0 },
-      { enemyDefId: 'pigeon', count: 5, pathIndex: 1, spawnInterval: 1.2, startDelay: 1 },
-      { enemyDefId: 'dog', count: 2, pathIndex: 2, spawnInterval: 3.0, startDelay: 4 },
+      { enemyDefId: 'rat', count: 12, pathIndex: 0, spawnInterval: 0.5, startDelay: 0 },
+      { enemyDefId: 'pigeon', count: 6, pathIndex: 0, spawnInterval: 1.0, startDelay: 1 },
+      { enemyDefId: 'dog', count: 3, pathIndex: 0, spawnInterval: 2.5, startDelay: 4 },
     ],
   },
 ];

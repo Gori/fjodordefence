@@ -223,6 +223,8 @@ function EnemyUnit({
   const y = terrainY + (def.flying ? 5.0 : 0.5);
   const groupRef = useRef<Group>(null);
   const prevPos = useRef({ x: enemy.position.x, z: enemy.position.z });
+  const spawnTime = useRef(Date.now());
+  const DROP_DURATION = 800; // ms to fall from sky
 
   const MeshComponent = ENEMY_MESHES[enemy.defId];
 
@@ -237,7 +239,15 @@ function EnemyUnit({
     const targetZ = enemy.position.z;
     groupRef.current.position.x += (targetX - groupRef.current.position.x) * lerp;
     groupRef.current.position.z += (targetZ - groupRef.current.position.z) * lerp;
-    groupRef.current.position.y = y;
+    // Follow terrain elevation at current interpolated position
+    const currentTerrainY = getElevation(groupRef.current.position.x, groupRef.current.position.z);
+    const targetY = currentTerrainY + (def.flying ? 5.0 : 0.5);
+    // Drop from sky on spawn
+    const elapsed = Date.now() - spawnTime.current;
+    const dropT = Math.min(1, elapsed / DROP_DURATION);
+    const easeT = dropT * dropT; // ease-in quadratic — falls faster and faster
+    const dropHeight = 10;
+    groupRef.current.position.y = targetY + dropHeight * (1 - easeT); // starts high, accelerates down
 
     // Rotate to face movement direction (models face -Z, so add PI)
     const dx = targetX - prevPos.current.x;
@@ -259,10 +269,14 @@ function EnemyUnit({
       <group scale={scale}>
         {MeshComponent && <MeshComponent />}
       </group>
-      {/* Ground marker at terrain level */}
+      {/* Ground glow at terrain level */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -y + terrainY + 0.15, 0]}>
-        <circleGeometry args={[scale * 0.5, 16]} />
-        <meshBasicMaterial color="#ff4444" transparent opacity={0.35} depthWrite={false} />
+        <circleGeometry args={[scale * 3, 24]} />
+        <meshBasicMaterial color="#ff2200" transparent opacity={0.15} depthWrite={false} />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -y + terrainY + 0.16, 0]}>
+        <circleGeometry args={[scale * 1.5, 20]} />
+        <meshBasicMaterial color="#ff4400" transparent opacity={0.3} depthWrite={false} />
       </mesh>
 
       {hpPercent < 1 && (

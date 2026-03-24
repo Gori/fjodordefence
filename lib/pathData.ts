@@ -1,88 +1,117 @@
 import type { Vec2 } from './types';
 
-// Full-resolution path from actual OSM road geometry (106→~85 pts after cleaning)
-// Route: Skanstull → Ringvägen → Rosenlundsgatan → Hornsgatan → Hornstull
+// Exact road centerlines from OSM dual-carriageway averaging.
+// Bounds: west=18.018, east=18.115
+// Start: Ringvägen × Götgatan (Skanstull) → End: Hornstull
 
 export const PATH_MAIN: Vec2[] = [
-  // Ringvägen from Skanstull (18 pts)
-  { x: 26.54, z: 34.16 },
-  { x: 25.98, z: 33.85 },
-  { x: 25.46, z: 33.93 },
-  { x: 24.17, z: 34.13 },
-  { x: 22.54, z: 34.17 },
-  { x: 22.25, z: 34.12 },
-  { x: 21.06, z: 33.90 },
-  { x: 20.12, z: 33.65 },
-  { x: 19.46, z: 33.41 },
-  { x: 18.08, z: 32.70 },
-  { x: 17.24, z: 32.21 },
-  { x: 16.18, z: 31.05 },
-  // Transition to Rosenlundsgatan
-  { x: 13.26, z: 28.33 },
-  { x: 10.34, z: 25.61 },
-  { x: 7.41, z: 22.88 },
-  // Rosenlundsgatan (full resolution, cleaned)
-  { x: 4.49, z: 20.16 },
-  { x: 4.68, z: 19.70 },
-  { x: 4.84, z: 19.16 },
-  { x: 4.84, z: 19.02 },
-  { x: 4.82, z: 18.70 },
-  { x: 4.80, z: 18.51 },
-  { x: 4.47, z: 16.20 },
-  { x: 4.40, z: 15.72 },
-  { x: 4.22, z: 14.45 },
-  { x: 4.18, z: 14.13 },
-  { x: 4.01, z: 12.95 },
-  { x: 4.00, z: 12.86 },
-  { x: 3.80, z: 11.46 },
-  { x: 3.68, z: 10.64 },
-  { x: 3.45, z: 9.01 },
-  { x: 3.07, z: 6.38 },
-  { x: 2.89, z: 5.17 },
-  { x: 2.58, z: 2.87 },
-  { x: 2.41, z: 1.75 },
-  { x: 1.99, z: -1.12 },
-  { x: 1.52, z: -4.35 },
-  { x: 1.11, z: -7.20 },
-  { x: 0.72, z: -9.80 },
-  { x: 0.30, z: -12.79 },
-  { x: 0.19, z: -13.60 },
-  // Transition to Hornsgatan
-  { x: -4.00, z: -11.00 },
-  { x: -10.00, z: -8.00 },
-  { x: -16.00, z: -5.50 },
-  // Hornsgatan heading west (cleaned, no backtracking)
-  { x: -19.48, z: -5.19 },
-  { x: -23.00, z: -3.69 },
-  { x: -23.95, z: -3.29 },
-  { x: -24.57, z: -2.66 },
-  { x: -26.71, z: -1.75 },
-  { x: -27.92, z: -1.17 },
-  { x: -29.31, z: -0.98 },
-  { x: -31.13, z: -0.23 },
-  { x: -31.49, z: 0.38 },
-  { x: -31.61, z: 0.68 },
+  // Ringvägen: Götgatan intersection → heading west along the curve
+  { x: 10.478, z: 32.711 },
+  { x: 10.272, z: 32.843 },
+  { x: 9.88, z: 32.98 },
+  { x: 9.498, z: 33.26 },
+  { x: 9.228, z: 33.444 },
+  { x: 8.916, z: 33.41 },
+  { x: 8.11, z: 33.569 },
+  { x: 7.3, z: 33.557 },
+  // Ringvägen curve (south-west toward Rosenlundsgatan)
+  { x: 7.265, z: 34.148 },
+  { x: 6.361, z: 34.238 },
+  { x: 5.582, z: 34.309 },
+  { x: 5.133, z: 34.24 },
+  { x: 4.343, z: 34.039 },
+  { x: 3.49, z: 33.663 },
+  { x: 2.699, z: 33.244 },
+  { x: 1.982, z: 32.775 },
+  { x: 1.102, z: 32.095 },
+  { x: -0.184, z: 31.052 },
+  { x: -0.545, z: 30.764 },
+  { x: -1.074, z: 30.213 },
+  { x: -1.6, z: 29.67 },
+  { x: -2.281, z: 28.949 },
+  { x: -2.961, z: 28.231 },
+  { x: -4.009, z: 26.802 },
+  { x: -4.586, z: 26.016 },
+  { x: -4.871, z: 25.612 },
+  // Ringvägen approaching Rosenlundsgatan junction
+  { x: -4.69, z: 25.31 },
+  { x: -4.915, z: 24.975 },
+  { x: -5.293, z: 24.696 },
+  { x: -5.903, z: 23.843 },
+  { x: -6.578, z: 22.818 },
+  { x: -7.197, z: 21.839 },
+  { x: -7.642, z: 21.181 },
+  { x: -7.898, z: 20.742 },
+  { x: -8.207, z: 20.314 },
+  { x: -8.35, z: 20.076 },
+  // Rosenlundsgatan (straight north)
+  { x: -8.286, z: 19.303 },
+  { x: -8.277, z: 18.804 },
+  { x: -8.277, z: 18.137 },
+  { x: -8.31, z: 17.668 },
+  { x: -8.404, z: 16.597 },
+  { x: -8.533, z: 15.399 },
+  { x: -8.62, z: 14.599 },
+  { x: -8.738, z: 13.497 },
+  { x: -8.806, z: 12.87 },
+  { x: -8.887, z: 12.128 },
+  { x: -9.001, z: 11.07 },
+  { x: -9.077, z: 10.373 },
+  { x: -9.14, z: 9.825 },
+  { x: -9.23, z: 9.01 },
+  { x: -9.375, z: 7.695 },
+  { x: -9.472, z: 6.785 },
+  { x: -9.577, z: 5.825 },
+  { x: -9.685, z: 4.802 },
+  { x: -9.802, z: 3.7 },
+  { x: -9.888, z: 2.914 },
+  { x: -9.948, z: 2.35 },
+  { x: -10.06, z: 1.353 },
+  { x: -10.177, z: 0.315 },
+  { x: -10.36, z: -1.315 },
+  { x: -10.576, z: -3.25 },
+  { x: -10.658, z: -3.996 },
+  { x: -10.822, z: -5.478 },
+  { x: -10.854, z: -5.779 },
+  { x: -10.955, z: -6.707 },
+  { x: -11.095, z: -7.945 },
+  { x: -11.18, z: -8.7 },
+  { x: -11.29, z: -9.682 },
+  { x: -11.406, z: -10.724 },
+  { x: -11.504, z: -11.642 },
+  { x: -11.622, z: -12.753 },
+  { x: -11.668, z: -13.182 },
+  // Hornsgatan (heading west to Hornstull)
+  { x: -12.053, z: -13.253 },
+  { x: -12.682, z: -12.888 },
+  { x: -13.837, z: -12.254 },
+  { x: -15.386, z: -11.414 },
+  { x: -16.02, z: -11.043 },
+  { x: -16.606, z: -10.734 },
+  { x: -18.342, z: -9.79 },
+  { x: -19.56, z: -9.128 },
+  { x: -20.686, z: -8.495 },
+  { x: -21.682, z: -7.911 },
+  { x: -22.203, z: -7.599 },
+  { x: -23.145, z: -7.069 },
+  { x: -23.905, z: -6.687 },
+  { x: -24.696, z: -6.264 },
+  { x: -25.235, z: -5.969 },
+  { x: -25.625, z: -5.706 },
+  { x: -25.902, z: -5.577 },
+  { x: -26.715, z: -5.101 },
+  { x: -27.432, z: -4.685 },
+  { x: -28.281, z: -4.176 },
+  { x: -29.669, z: -3.371 },
+  { x: -30.454, z: -2.923 },
+  { x: -30.787, z: -2.726 },
+  { x: -31.574, z: -2.273 },
+  { x: -32.129, z: -1.946 },
+  { x: -32.824, z: -1.551 },
+  { x: -33.363, z: -1.287 },
+  { x: -33.978, z: -0.927 },
+  { x: -34.64, z: -0.533 },
+  { x: -35.513, z: -0.067 },
 ];
 
-// Offset variants (perpendicular to path direction)
-function makeVariant(main: Vec2[], offset: number): Vec2[] {
-  return main.map((p, i, arr) => {
-    const prev = arr[Math.max(i - 1, 0)];
-    const next = arr[Math.min(i + 1, arr.length - 1)];
-    const ref = i === arr.length - 1 ? prev : p;
-    const refN = i === arr.length - 1 ? p : next;
-    const dx = refN.x - ref.x, dz = refN.z - ref.z;
-    const len = Math.sqrt(dx * dx + dz * dz);
-    if (len < 0.01) return { ...p };
-    return { x: p.x + (-dz / len) * offset, z: p.z + (dx / len) * offset };
-  });
-}
-
-export const PATH_VARIANT_A: Vec2[] = makeVariant(PATH_MAIN, 1.0);
-export const PATH_VARIANT_B: Vec2[] = makeVariant(PATH_MAIN, -1.0);
-
-export const ALL_PATHS: Vec2[][] = [
-  PATH_MAIN,
-  PATH_VARIANT_A,
-  PATH_VARIANT_B,
-];
+export const ALL_PATHS: Vec2[][] = [PATH_MAIN];

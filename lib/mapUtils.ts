@@ -5,7 +5,7 @@ const BOUNDS = {
   minLat: 59.3040,
   maxLat: 59.3260,
   minLng: 18.0180,
-  maxLng: 18.0920,
+  maxLng: 18.1150,
 };
 
 export const WORLD_SIZE = 100;

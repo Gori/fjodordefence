@@ -12,7 +12,7 @@ const BOUNDS = {
   south: 59.3040,
   west: 18.0180,
   north: 59.3260,
-  east: 18.0920,
+  east: 18.1150,
 };
 
 const WORLD_SIZE = 100;
@@ -110,7 +110,7 @@ function processData(data) {
         else height = 10 + (el.id % 10) * 1.5;
         const gameHeight = Math.max(0.3, height * 0.12);
 
-        buildings.push({ id: el.id, coords, height: Math.round(gameHeight * 100) / 100 });
+        buildings.push({ id: el.id, coords, height: Math.round(gameHeight * 100) / 100, type: tags.building || 'yes' });
       }
     }
   }
@@ -154,6 +154,7 @@ function processData(data) {
         id: el.id,
         coords,
         height: Math.round(gameHeight * 100) / 100,
+        type: tags.building || 'yes',
       });
     } else if (tags.highway) {
       // Road width based on type
