@@ -8,6 +8,7 @@ import { snapToGrid } from '@/lib/mapUtils';
 import { ALL_PATHS } from '@/lib/pathData';
 import { TOWER_DEFS } from '@/lib/towerDefs';
 import { Line, Html } from '@react-three/drei';
+import { createGroundTexture } from './GroundTexture';
 import { useFlattenMaterial } from './FlattenMaterial';
 import { getElevation } from '@/lib/elevation';
 import type { ThreeEvent } from '@react-three/fiber';
@@ -314,6 +315,7 @@ export function Map() {
 
   const [mapData, setMapData] = useState<MapData | null>(null);
   const [landZones, setLandZones] = useState<LandZone[]>([]);
+  const [pitches, setPitches] = useState<{ name: string | null; sport: string | null; surface: string | null; coords: [number, number][] }[]>([]);
   const [hoverPos, setHoverPos] = useState<{ x: number; z: number } | null>(null);
   const [canPlace, setCanPlace] = useState(false);
 
@@ -325,6 +327,10 @@ export function Map() {
     fetch('/data/landuse.json')
       .then((r) => r.json())
       .then((data: LandZone[]) => setLandZones(data))
+      .catch(() => {});
+    fetch('/data/pitches.json')
+      .then((r) => r.json())
+      .then(setPitches)
       .catch(() => {});
   }, []);
 
@@ -412,91 +418,41 @@ export function Map() {
       hcz + (z - hcz) * 1.08,
     ] as [number, number]);
 
-    // High-res terrain mesh that follows real elevation
-    // Colored by land use: roads=gray, parks=green, urban=beige/gray, water=purple/blue
-    const gridRes = 250;
+    // Terrain mesh with elevation displacement + texture for coloring
+    const gridRes = 200;
     const size = 300;
     const geo = new THREE.PlaneGeometry(size, size, gridRes, gridRes);
     geo.rotateX(-Math.PI / 2);
 
+    // Apply elevation to vertices
     const pos = geo.attributes.position;
-    const colors = new Float32Array(pos.count * 3);
-    const ZONE_COLORS: Record<string, THREE.Color> = {
-      park: new THREE.Color('#3a5a30'),
-      garden: new THREE.Color('#3a5a30'),
-      grass: new THREE.Color('#4a6a38'),
-      forest: new THREE.Color('#2a4a20'),
-      scrub: new THREE.Color('#3a5528'),
-      allotments: new THREE.Color('#4a6a3a'),
-      cemetery: new THREE.Color('#2a4028'),
-      playground: new THREE.Color('#8a7a60'),
-      pitch: new THREE.Color('#4a7a3a'),
-      rock: new THREE.Color('#7a7570'),
-      beach: new THREE.Color('#c0b090'),
-      residential: new THREE.Color('#656055'),
-      commercial: new THREE.Color('#5a5550'),
-      railway: new THREE.Color('#4a4540'),
-      construction: new THREE.Color('#7a7060'),
-    };
-    const urbanColor = new THREE.Color('#606060');
-    const waterColor = new THREE.Color('#1a3060');
-
-    // Build zone polygons for point-in-polygon testing
-    const zonePolys: { type: string; coords: [number, number][] }[] = [];
-    for (const z of landZones) {
-      if (z.coords.length >= 3) zonePolys.push(z);
-    }
-    // Also add parks from mapData
-    if (mapData) {
-      for (const park of mapData.parks) {
-        if (park.coords.length >= 3) zonePolys.push({ type: 'park', coords: park.coords });
-      }
-    }
-
-    function pointInPoly(px: number, pz: number, poly: [number, number][]): boolean {
-      let inside = false;
-      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-        const [xi, zi] = poly[i];
-        const [xj, zj] = poly[j];
-        if ((zi > pz) !== (zj > pz) && px < ((xj - xi) * (pz - zi)) / (zj - zi) + xi) {
-          inside = !inside;
-        }
-      }
-      return inside;
-    }
-
-    function getZoneType(px: number, pz: number): string | null {
-      for (const zone of zonePolys) {
-        if (pointInPoly(px, pz, zone.coords)) return zone.type;
-      }
-      return null;
-    }
-
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i);
       const z = pos.getZ(i);
       const elev = getElevation(x, z);
       const isLand = elev > 0.3;
-      const groundY = isLand ? Math.max(elev, 0.1) - 0.15 : -0.35;
-      pos.setY(i, groundY);
-
-      let c: THREE.Color;
-      if (!isLand) {
-        c = waterColor;
-      } else {
-        const zone = getZoneType(x, z);
-        c = (zone && ZONE_COLORS[zone]) ? ZONE_COLORS[zone] : urbanColor;
-      }
-
-      colors[i * 3] = c.r;
-      colors[i * 3 + 1] = c.g;
-      colors[i * 3 + 2] = c.b;
+      pos.setY(i, isLand ? Math.max(elev, 0.1) - 0.15 : -0.35);
     }
     pos.needsUpdate = true;
-    geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+    // Set UVs to match ground texture coords (-60..60)
+    const uv = geo.attributes.uv;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i);
+      const z = pos.getZ(i);
+      uv.setXY(i, (x + 60) / 120, (z + 60) / 120);
+    }
+    uv.needsUpdate = true;
+
     geo.computeVertexNormals();
     return geo;
-  }, [mapData, landZones]);
+  }, [mapData]);
+
+  // ── Ground texture (roads, parks, pitches, building footprints) ──
+  const groundTexture = useMemo(() => {
+    if (!mapData) return null;
+    return createGroundTexture(mapData, landZones, pitches);
+  }, [mapData, landZones, pitches]);
 
   // ── Process OSM data into geometry ──────────────────────────────
   const geos = useMemo(() => {
@@ -524,12 +480,9 @@ export function Map() {
     const west = buildBuildings(westBuildings);
     const east = buildBuildings(eastBuildings);
 
-    const minorRoads = buildRoadGeo(mapData.roads.filter(r => r.importance <= 1));
-    const majorRoads = buildRoadGeo(mapData.roads.filter(r => r.importance >= 2), 1.5);
-    const parks = buildParkGeo(mapData.parks);
     const labels = findLabels(mapData.roads);
 
-    return { westWalls: west.walls, eastWalls: east.walls, minorRoads, majorRoads, parks, labels };
+    return { westWalls: west.walls, eastWalls: east.walls, labels };
   }, [mapData]);
 
   return (
@@ -540,10 +493,14 @@ export function Map() {
         <meshStandardMaterial color="#1a3858" roughness={0.05} metalness={0.3} />
       </mesh>
 
-      {/* ── Terrain mesh (green land with elevation, blue water) ── */}
+      {/* ── Terrain mesh with ground texture ── */}
       {islandGeo && (
         <mesh geometry={islandGeo}>
-          <meshStandardMaterial vertexColors roughness={0.85} side={THREE.DoubleSide} />
+          {groundTexture ? (
+            <meshStandardMaterial map={groundTexture} roughness={0.85} side={THREE.DoubleSide} />
+          ) : (
+            <meshStandardMaterial color="#606060" roughness={0.85} side={THREE.DoubleSide} />
+          )}
         </mesh>
       )}
 
@@ -573,14 +530,7 @@ export function Map() {
         </group>
       )}
 
-      {/* ── Parks ── */}
-      {geos?.parks && <mesh geometry={geos.parks}><meshStandardMaterial color="#2d5a25" roughness={0.85} side={THREE.DoubleSide} /></mesh>}
-
-      {/* ── Minor roads (gray against green ground) ── */}
-      {geos?.minorRoads && <mesh geometry={geos.minorRoads}><meshStandardMaterial color="#7a756a" roughness={0.75} /></mesh>}
-
-      {/* ── Major roads (wider, brighter) ── */}
-      {geos?.majorRoads && <mesh geometry={geos.majorRoads} position={[0, 0.01, 0]}><meshStandardMaterial color="#9a958a" roughness={0.6} /></mesh>}
+      {/* Parks and roads are now in the ground texture */}
 
       {/* ── Buildings (flatten near enemies) ── */}
       {geos?.westWalls && (
