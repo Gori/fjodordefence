@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Mapbox 3D Model Grabber — Södermalm</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, system-ui, sans-serif; background: #1a1a2e; color: #eee; }
+    #map { width: 100%; height: 60vh; }
+    #panel {
+      padding: 16px; max-height: 40vh; overflow-y: auto;
+      background: #16213e; border-top: 2px solid #0f3460;
+    }
+    h2 { margin-bottom: 8px; color: #e94560; }
+    .info { color: #888; margin-bottom: 12px; font-size: 13px; }
+    #token-form { padding: 20px; text-align: center; }
+    #token-form input { padding: 8px 16px; width: 500px; font-size: 14px; border-radius: 4px; border: 1px solid #444; background: #222; color: #fff; }
+    #token-form button { padding: 8px 20px; margin-left: 8px; background: #e94560; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { text-align: left; padding: 6px 8px; border-bottom: 1px solid #333; color: #e94560; }
+    td { padding: 6px 8px; border-bottom: 1px solid #222; }
+    td.url { max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: monospace; font-size: 11px; }
+    .btn { padding: 3px 10px; background: #0f3460; color: #fff; border: none; border-radius: 3px; cursor: pointer; font-size: 11px; }
+    .btn:hover { background: #e94560; }
+    .btn-export { padding: 8px 20px; background: #e94560; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; margin-top: 12px; }
+    .status { color: #5cb85c; font-weight: bold; }
+    #counter { position: fixed; top: 10px; right: 10px; background: rgba(0,0,0,0.8); padding: 8px 16px; border-radius: 4px; z-index: 9999; font-size: 14px; }
+  </style>
+</head>
+<body>
+
+<div id="token-form">
+  <h2>Mapbox 3D Model Grabber</h2>
+  <p class="info">Enter your Mapbox access token to load the Standard style with 3D landmarks on Södermalm.</p>
+  <p class="info">Get a free token at <a href="https://account.mapbox.com/access-tokens/" style="color:#e94560">mapbox.com</a></p>
+  <br/>
+  <input id="token" type="text" placeholder="pk.eyJ1Ijo..." />
+  <button onclick="startMap()">Load Map</button>
+</div>
+
+<div id="map" style="display:none"></div>
+<div id="counter" style="display:none">Captured: <span id="count">0</span> resources</div>
+<div id="panel" style="display:none">
+  <h2>Captured 3D Resources</h2>
+  <p class="info">
+    These are the binary resources Mapbox loaded for this area. Look for model/mesh data (GLB, 3D tiles, etc).
+    Pan and zoom to load more landmarks. Click "Download" to save individual files, or "Export All" to get everything.
+  </p>
+  <button class="btn-export" onclick="exportAll()">Export All Models + Manifest</button>
+  <button class="btn-export" onclick="exportManifest()" style="background:#0f3460;margin-left:8px;">Export Landmark Positions</button>
+  <br/><br/>
+  <table>
+    <thead><tr><th>#</th><th>Type</th><th>Size</th><th>URL</th><th>Action</th></tr></thead>
+    <tbody id="captures"></tbody>
+  </table>
+</div>
+
+<script>
+// ─── State ──────────────────────────────────────────────────────────
+const captured = [];        // { url, blob, type, size, filename }
+const landmarkFeatures = []; // from queryRenderedFeatures
+let map = null;
+
+// ─── Intercept fetch BEFORE Mapbox GL loads ─────────────────────────
+const originalFetch = window.fetch;
+window.fetch = async function(...args) {
+  const response = await originalFetch.apply(this, args);
+  const url = typeof args[0] === 'string' ? args[0] : args[0]?.url || '';
+
+  // Capture binary responses from Mapbox API that look like 3D data
+  if (url.includes('api.mapbox.com') || url.includes('tiles.mapbox.com')) {
+    const isModel = url.includes('model') || url.includes('3d') || url.includes('landmark');
+    const isBinary = url.endsWith('.glb') || url.endsWith('.b3dm') || url.endsWith('.i3dm')
+                  || url.endsWith('.pbf') || url.endsWith('.mvt');
+    const isTile = /\/\d+\/\d+\/\d+/.test(url);
+
+    if (isModel || isBinary || isTile) {
+      try {
+        const clone = response.clone();
+        const blob = await clone.blob();
+
+        // Check if this is binary data (not JSON/text)
+        if (blob.size > 100) {
+          // Check the first bytes for known magic numbers
+          const header = new Uint8Array(await blob.slice(0, 20).arrayBuffer());
+          const magic = String.fromCharCode(...header.slice(0, 4));
+
+          let type = 'unknown';
+          if (magic === 'glTF') type = 'glTF/GLB';
+          else if (magic === 'b3dm') type = 'Batched 3D Model';
+          else if (magic === 'i3dm') type = 'Instanced 3D Model';
+          else if (header[0] === 0x1a && header[1] === 0x00) type = 'Vector Tile (PBF)';
+          else if (url.endsWith('.pbf')) type = 'Protobuf';
+          else if (url.includes('model')) type = 'Model Tile';
+          else type = `Binary (${blob.type || 'unknown'})`;
+
+          // Extract z/x/y from URL for identification
+          const tileMatch = url.match(/\/(\d+)\/(\d+)\/(\d+)/);
+          const tileInfo = tileMatch ? `z${tileMatch[1]}/x${tileMatch[2]}/y${tileMatch[3]}` : '';
+
+          const entry = {
+            url: url.split('?')[0], // strip token
+            blob,
+            type,
+            size: blob.size,
+            tileInfo,
+            filename: `mapbox_${type.replace(/[^a-zA-Z0-9]/g, '_')}_${tileInfo.replace(/\//g, '_')}_${captured.length}.${type.includes('glTF') ? 'glb' : 'bin'}`,
+          };
+          captured.push(entry);
+          updateTable();
+        }
+      } catch(e) { /* ignore clone errors */ }
+    }
+  }
+
+  return response;
+};
+
+// Also intercept XMLHttpRequest for older code paths
+const origXHROpen = XMLHttpRequest.prototype.open;
+const origXHRSend = XMLHttpRequest.prototype.send;
+XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+  this._grabUrl = url;
+  return origXHROpen.call(this, method, url, ...rest);
+};
+
+function updateTable() {
+  document.getElementById('count').textContent = captured.length;
+  const tbody = document.getElementById('captures');
+  // Only add the newest row
+  const entry = captured[captured.length - 1];
+  const i = captured.length - 1;
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td>${i}</td>
+    <td>${entry.type}</td>
+    <td>${(entry.size / 1024).toFixed(1)} KB</td>
+    <td class="url" title="${entry.url}">${entry.tileInfo ? `[${entry.tileInfo}] ` : ''}${entry.url.split('/').slice(-3).join('/')}</td>
+    <td><button class="btn" onclick="downloadOne(${i})">Download</button></td>
+  `;
+  tbody.appendChild(tr);
+}
+
+function downloadOne(i) {
+  const entry = captured[i];
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(entry.blob);
+  a.download = entry.filename;
+  a.click();
+}
+
+async function exportAll() {
+  // Download all captured models as individual files + a manifest
+  for (let i = 0; i < captured.length; i++) {
+    downloadOne(i);
+    await new Promise(r => setTimeout(r, 200)); // stagger downloads
+  }
+  exportManifest();
+}
+
+function exportManifest() {
+  // Query landmarks from the map
+  queryLandmarks();
+
+  const manifest = {
+    bounds: { south: 59.3040, north: 59.3260, west: 18.0180, east: 18.1150 },
+    capturedAt: new Date().toISOString(),
+    resources: captured.map((e, i) => ({
+      index: i,
+      filename: e.filename,
+      type: e.type,
+      size: e.size,
+      tileInfo: e.tileInfo,
+      urlPath: e.url,
+    })),
+    landmarks: landmarkFeatures,
+  };
+
+  const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'mapbox_models_manifest.json';
+  a.click();
+}
+
+function queryLandmarks() {
+  if (!map) return;
+  landmarkFeatures.length = 0;
+
+  // Try to get features from various possible layer names
+  const layerIds = map.getStyle().layers.map(l => l.id);
+  console.log('All layers:', layerIds);
+
+  const modelLayers = layerIds.filter(id =>
+    id.includes('landmark') || id.includes('model') || id.includes('3d') ||
+    id.includes('building') || id.includes('church') || id.includes('bridge')
+  );
+  console.log('Potential model layers:', modelLayers);
+
+  // Query all features on screen
+  try {
+    const features = map.queryRenderedFeatures();
+    const unique = new Map();
+    for (const f of features) {
+      if (f.layer && (
+        f.layer.id.includes('landmark') || f.layer.id.includes('model') ||
+        f.layer.id.includes('3d-') || f.layer.type === 'model'
+      )) {
+        const key = `${f.layer.id}_${f.id || JSON.stringify(f.geometry?.coordinates)}`;
+        if (!unique.has(key)) {
+          unique.set(key, {
+            layerId: f.layer.id,
+            layerType: f.layer.type,
+            id: f.id,
+            properties: f.properties,
+            geometry: f.geometry,
+          });
+        }
+      }
+    }
+    landmarkFeatures.push(...unique.values());
+    console.log(`Found ${landmarkFeatures.length} landmark features`);
+  } catch(e) {
+    console.error('queryRenderedFeatures error:', e);
+  }
+}
+
+// ─── Start the map ──────────────────────────────────────────────────
+function startMap() {
+  const token = document.getElementById('token').value.trim();
+  if (!token) { alert('Please enter a Mapbox access token'); return; }
+
+  document.getElementById('token-form').style.display = 'none';
+  document.getElementById('map').style.display = 'block';
+  document.getElementById('panel').style.display = 'block';
+  document.getElementById('counter').style.display = 'block';
+
+  // Load Mapbox GL JS
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = 'https://api.mapbox.com/mapbox-gl-js/v3.9.4/mapbox-gl.css';
+  document.head.appendChild(link);
+
+  const script = document.createElement('script');
+  script.src = 'https://api.mapbox.com/mapbox-gl-js/v3.9.4/mapbox-gl.js';
+  script.onload = () => {
+    mapboxgl.accessToken = token;
+
+    map = new mapboxgl.Map({
+      container: 'map',
+      style: 'mapbox://styles/mapbox/standard',
+      center: [18.065, 59.315],  // Södermalm center
+      zoom: 15,
+      pitch: 60,
+      bearing: -17,
+      antialias: true,
+    });
+
+    map.on('load', () => {
+      console.log('Map loaded. Style layers:', map.getStyle().layers.map(l => `${l.id} (${l.type})`));
+
+      // Log all sources
+      const sources = map.getStyle().sources;
+      console.log('Sources:', Object.keys(sources));
+      for (const [name, src] of Object.entries(sources)) {
+        console.log(`  ${name}:`, src.type, src.url || '');
+      }
+
+      // Query for landmarks after a delay (let models load)
+      setTimeout(() => {
+        queryLandmarks();
+        console.log('Initial landmark query done. Pan around to load more.');
+      }, 3000);
+    });
+
+    // Re-query when the map moves (new models may load)
+    map.on('moveend', () => {
+      setTimeout(queryLandmarks, 1000);
+    });
+  };
+  document.head.appendChild(script);
+}
+</script>
+</body>
+</html>

@@ -8,6 +8,7 @@ import { Towers } from './Tower';
 import { Enemies } from './Enemy';
 import { Projectiles } from './Projectile';
 import { TreeMeshes } from './Trees';
+import { ParticleEffects } from './Particles';
 import { useGameStore } from '@/lib/store';
 import * as THREE from 'three';
 
@@ -68,6 +69,7 @@ export function GameCanvas() {
       <PathRenderer />
       <Towers />
       <Enemies />
+      <ParticleEffects />
       <Projectiles />
       <GameLoop />
     </Canvas>

@@ -48,7 +48,7 @@ const PROJECTILE_HIT_RADIUS = 0.6;
 const AOE_RADIUS = 4;
 const SLOW_DURATION = 2.0;
 const SLOW_FACTOR = 0.5;
-const MIN_TOWER_SPACING = 2.5;
+const MIN_TOWER_SPACING = 1.5;
 
 // ── Pure helper functions ──────────────────────────────────────────────
 

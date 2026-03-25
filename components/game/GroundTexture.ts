@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { getElevation } from '@/lib/elevation';
 
 interface MapData {
   buildings: { coords: [number, number][]; type: string }[];
@@ -92,11 +93,28 @@ export function createGroundTexture(
   canvas.height = TEX_SIZE;
   const ctx = canvas.getContext('2d')!;
 
-  // 1. Base: water color
-  ctx.fillStyle = '#1a3060';
-  ctx.fillRect(0, 0, TEX_SIZE, TEX_SIZE);
+  // 1. Paint per-pixel: water blue where elevation=0, green where land
+  const imgData = ctx.createImageData(TEX_SIZE, TEX_SIZE);
+  const waterRGB = [26, 48, 96]; // #1a3060
+  const landRGB = [80, 100, 60]; // muted green-gray base for all land
 
-  // 2. Land zones (parks, forests, etc.)
+  for (let py = 0; py < TEX_SIZE; py++) {
+    for (let px = 0; px < TEX_SIZE; px++) {
+      const wx = WORLD_MIN + (px / TEX_SIZE) * WORLD_RANGE;
+      const wz = WORLD_MAX - (py / TEX_SIZE) * WORLD_RANGE;
+      const elev = getElevation(wx, wz);
+      const idx = (py * TEX_SIZE + px) * 4;
+      const isLand = elev > 0.3;
+      const rgb = isLand ? landRGB : waterRGB;
+      imgData.data[idx] = rgb[0];
+      imgData.data[idx + 1] = rgb[1];
+      imgData.data[idx + 2] = rgb[2];
+      imgData.data[idx + 3] = 255;
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
+
+  // 2. Land zones (parks, forests, etc.) — painted ON TOP of base
   for (const zone of landZones) {
     const color = ZONE_COLORS[zone.type];
     if (color) fillPolygon(ctx, zone.coords, color);

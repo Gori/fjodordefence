@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useEffect, useState } from 'react';
+import { useMemo, useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { useGameStore } from '@/lib/store';
@@ -11,6 +11,7 @@ import { Line, Html } from '@react-three/drei';
 import { createGroundTexture } from './GroundTexture';
 import { useFlattenMaterial } from './FlattenMaterial';
 import { getElevation } from '@/lib/elevation';
+import { useFrame } from '@react-three/fiber';
 import type { ThreeEvent } from '@react-three/fiber';
 
 // ── Types ──────────────────────────────────────────────────────────────
@@ -220,7 +221,7 @@ function buildBuildings(buildings: BuildingData[]): {
   console.log(`[buildBuildings] Created ${wallGeos.length} wall geometries from input`);
 
   let walls: THREE.BufferGeometry | null = null;
-  let roofs: THREE.BufferGeometry | null = null;
+  const roofs: THREE.BufferGeometry | null = null;
   if (wallGeos.length > 0) {
     try {
       walls = mergeGeometries(wallGeos, false);
@@ -298,12 +299,54 @@ function findLabels(roads: RoadData[]): StreetLabel[] {
     found.add(road.name);
     const mid = Math.floor(road.coords.length / 2);
     const [x, z] = road.coords[mid];
-    labels.push({ name: road.name, position: [x, 2.5, z] });
+    labels.push({ name: road.name, position: [x, getElevation(x, z) + 3, z] });
   }
   return labels;
 }
 
 const PATH_COLORS = ['#ff9f43', '#ee5a24', '#18dcff'];
+const MAP_FADE_DURATION = 0.9;
+const MAP_ENTRY_OFFSET = new THREE.Vector3(0, -0.8, 3.5);
+const MAP_ENTRY_SCALE = 0.985;
+
+function applyFadeOpacity(group: THREE.Group | null, opacity: number) {
+  if (!group) return;
+
+  group.traverse((object) => {
+    const materialOrMaterials = (object as THREE.Mesh).material;
+    if (!materialOrMaterials) return;
+
+    const materials = Array.isArray(materialOrMaterials) ? materialOrMaterials : [materialOrMaterials];
+    for (const material of materials) {
+      if (!('opacity' in material) || !('transparent' in material)) continue;
+
+      if (material.userData.baseOpacity === undefined) {
+        material.userData.baseOpacity = material.opacity;
+      }
+      if (material.userData.baseTransparent === undefined) {
+        material.userData.baseTransparent = material.transparent;
+      }
+
+      const baseOpacity = material.userData.baseOpacity as number;
+      const baseTransparent = material.userData.baseTransparent as boolean;
+      material.opacity = baseOpacity * opacity;
+      material.transparent = baseTransparent || opacity < 0.999;
+    }
+  });
+}
+
+function applyEntryTransform(group: THREE.Group | null, progress: number) {
+  if (!group) return;
+
+  const eased = 1 - Math.pow(1 - progress, 3);
+  group.position.set(
+    MAP_ENTRY_OFFSET.x * (1 - eased),
+    MAP_ENTRY_OFFSET.y * (1 - eased),
+    MAP_ENTRY_OFFSET.z * (1 - eased)
+  );
+  const scale = MAP_ENTRY_SCALE + (1 - MAP_ENTRY_SCALE) * eased;
+  group.scale.setScalar(scale);
+}
 
 // ── Main Map Component ─────────────────────────────────────────────────
 export function Map() {
@@ -318,6 +361,13 @@ export function Map() {
   const [pitches, setPitches] = useState<{ name: string | null; sport: string | null; surface: string | null; coords: [number, number][] }[]>([]);
   const [hoverPos, setHoverPos] = useState<{ x: number; z: number } | null>(null);
   const [canPlace, setCanPlace] = useState(false);
+  const [landZonesSettled, setLandZonesSettled] = useState(false);
+  const [pitchesSettled, setPitchesSettled] = useState(false);
+  const mapGroupRef = useRef<THREE.Group>(null);
+  const terrainPickMeshRef = useRef<THREE.Mesh>(null);
+  const fadeOpacityRef = useRef(0);
+  const fadeStartTimeRef = useRef<number | null>(null);
+  const fadeFrameRef = useRef<number | null>(null);
 
   useEffect(() => {
     fetch('/data/sodermalm.json?v=11')
@@ -327,26 +377,48 @@ export function Map() {
     fetch('/data/landuse.json')
       .then((r) => r.json())
       .then((data: LandZone[]) => setLandZones(data))
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLandZonesSettled(true));
     fetch('/data/pitches.json')
       .then((r) => r.json())
       .then(setPitches)
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setPitchesSettled(true));
   }, []);
 
   const isPlacing = selectedTowerDef && (phase === 'playing' || phase === 'between-waves');
+
+  const getPlacementPoint = (ray: THREE.Ray) => {
+    const terrainMesh = terrainPickMeshRef.current;
+    if (!terrainMesh) return null;
+
+    terrainMesh.updateMatrixWorld();
+    const raycaster = new THREE.Raycaster(ray.origin, ray.direction.clone());
+    const hits = raycaster.intersectObject(terrainMesh, false);
+    if (hits.length === 0) return null;
+
+    return hits[0].point;
+  };
 
   const handleClick = (e: ThreeEvent<MouseEvent>) => {
     if (!selectedTowerDef) return;
     if (phase !== 'playing' && phase !== 'between-waves') return;
     e.stopPropagation();
-    const snapped = snapToGrid({ x: e.point.x, z: e.point.z });
+    const point = getPlacementPoint(e.ray);
+    if (!point) return;
+    const snapped = snapToGrid({ x: point.x, z: point.z });
     placeTower(selectedTowerDef, snapped);
   };
 
   const handlePointerMove = (e: ThreeEvent<PointerEvent>) => {
     if (!isPlacing || !selectedTowerDef) { setHoverPos(null); return; }
-    const snapped = snapToGrid({ x: e.point.x, z: e.point.z });
+    const point = getPlacementPoint(e.ray);
+    if (!point) {
+      setHoverPos(null);
+      setCanPlace(false);
+      return;
+    }
+    const snapped = snapToGrid({ x: point.x, z: point.z });
     setHoverPos(snapped);
     const def = TOWER_DEFS[selectedTowerDef];
     if (!def || money < def.cost) { setCanPlace(false); return; }
@@ -485,24 +557,122 @@ export function Map() {
     return { westWalls: west.walls, eastWalls: east.walls, labels };
   }, [mapData]);
 
+  const isMapReady = Boolean(mapData && islandGeo && geos && landZonesSettled && pitchesSettled);
+
+  useEffect(() => {
+    if (fadeFrameRef.current !== null) {
+      cancelAnimationFrame(fadeFrameRef.current);
+      fadeFrameRef.current = null;
+    }
+
+    if (!isMapReady) {
+      fadeStartTimeRef.current = null;
+      fadeOpacityRef.current = 0;
+      applyFadeOpacity(mapGroupRef.current, 0);
+      applyEntryTransform(mapGroupRef.current, 0);
+      return;
+    }
+
+    fadeStartTimeRef.current = null;
+    fadeOpacityRef.current = 0;
+    applyFadeOpacity(mapGroupRef.current, 0);
+    applyEntryTransform(mapGroupRef.current, 0);
+
+    let firstFrame: number | null = null;
+    firstFrame = requestAnimationFrame(() => {
+      fadeFrameRef.current = requestAnimationFrame(() => {
+        fadeStartTimeRef.current = performance.now();
+        fadeFrameRef.current = null;
+      });
+    });
+    fadeFrameRef.current = firstFrame;
+
+    return () => {
+      if (firstFrame !== null) cancelAnimationFrame(firstFrame);
+      if (fadeFrameRef.current !== null) {
+        cancelAnimationFrame(fadeFrameRef.current);
+        fadeFrameRef.current = null;
+      }
+    };
+  }, [isMapReady]);
+
+  useFrame(() => {
+    if (!isMapReady) return;
+
+    const fadeStartTime = fadeStartTimeRef.current;
+    if (fadeStartTime === null) return;
+
+    const progress = Math.min((performance.now() - fadeStartTime) / (MAP_FADE_DURATION * 1000), 1);
+    if (progress === fadeOpacityRef.current) return;
+
+    fadeOpacityRef.current = progress;
+    applyFadeOpacity(mapGroupRef.current, progress);
+    applyEntryTransform(mapGroupRef.current, progress);
+  });
+
   return (
     <group>
-      {/* ── Water ── */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.3, 0]}>
-        <planeGeometry args={[300, 300]} />
-        <meshStandardMaterial color="#1a3858" roughness={0.05} metalness={0.3} />
-      </mesh>
+      <group ref={mapGroupRef}>
+        {islandGeo && (
+          <mesh
+            ref={terrainPickMeshRef}
+            geometry={islandGeo}
+            visible={false}
+          />
+        )}
 
-      {/* ── Terrain mesh with ground texture ── */}
-      {islandGeo && (
-        <mesh geometry={islandGeo}>
-          {groundTexture ? (
-            <meshStandardMaterial map={groundTexture} roughness={0.85} side={THREE.DoubleSide} />
-          ) : (
-            <meshStandardMaterial color="#606060" roughness={0.85} side={THREE.DoubleSide} />
-          )}
+        {/* ── Water ── */}
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.3, 0]}>
+          <planeGeometry args={[300, 300]} />
+          <meshStandardMaterial color="#1a3858" roughness={0.05} metalness={0.3} />
         </mesh>
-      )}
+
+        {/* ── Terrain mesh with ground texture ── */}
+        {islandGeo && (
+          <mesh geometry={islandGeo}>
+            {groundTexture ? (
+              <meshStandardMaterial map={groundTexture} roughness={0.85} side={THREE.DoubleSide} />
+            ) : (
+              <meshStandardMaterial color="#606060" roughness={0.85} side={THREE.DoubleSide} />
+            )}
+          </mesh>
+        )}
+
+        {/* Parks and roads are now in the ground texture */}
+
+        {/* ── Buildings (flatten near enemies) ── */}
+        {geos?.westWalls && (
+          <mesh geometry={geos.westWalls}>
+            <meshStandardMaterial {...westMat.props} />
+          </mesh>
+        )}
+        {geos?.eastWalls && (
+          <mesh geometry={geos.eastWalls}>
+            <meshStandardMaterial {...eastMat.props} />
+          </mesh>
+        )}
+
+        {/* ── Enemy path glow (visible through buildings) ── */}
+        {/* ── Enemy path (main only) ── */}
+        <Line points={ALL_PATHS[0].map(p => [p.x, getElevation(p.x, p.z) + 0.6, p.z] as [number, number, number])}
+          color={PATH_COLORS[0]} lineWidth={10} opacity={0.15} transparent
+          depthTest={true} depthWrite={false} />
+        <Line points={ALL_PATHS[0].map(p => [p.x, getElevation(p.x, p.z) + 0.6, p.z] as [number, number, number])}
+          color={PATH_COLORS[0]} lineWidth={4} opacity={0.8} transparent
+          depthTest={true} depthWrite={false} />
+
+        {/* ── Street labels ── */}
+        {geos?.labels?.map((l) => (
+          <Html key={l.name} position={l.position} center transform scale={0.5}
+            style={{ pointerEvents: 'none', userSelect: 'none' }}>
+            <div style={{
+              color: 'rgba(255,255,255,0.5)', fontSize: '12px', fontWeight: 800,
+              letterSpacing: '0.15em', textTransform: 'uppercase',
+              textShadow: '0 0 8px rgba(0,0,0,0.9)', whiteSpace: 'nowrap',
+            }}>{l.name}</div>
+          </Html>
+        ))}
+      </group>
 
       {/* ── Click plane for tower placement (barely visible, above buildings) ── */}
       <mesh
@@ -524,46 +694,12 @@ export function Map() {
             <meshBasicMaterial color={canPlace ? '#5cb85c' : '#e74c3c'} transparent opacity={0.15} />
           </mesh>
           <mesh rotation={[-Math.PI / 2, 0, 0]}>
-            <circleGeometry args={[1.2, 16]} />
+            <circleGeometry args={[0.55, 16]} />
             <meshBasicMaterial color={canPlace ? '#5cb85c' : '#e74c3c'} transparent opacity={0.3} />
           </mesh>
         </group>
       )}
 
-      {/* Parks and roads are now in the ground texture */}
-
-      {/* ── Buildings (flatten near enemies) ── */}
-      {geos?.westWalls && (
-        <mesh geometry={geos.westWalls}>
-          <meshStandardMaterial {...westMat.props} />
-        </mesh>
-      )}
-      {geos?.eastWalls && (
-        <mesh geometry={geos.eastWalls}>
-          <meshStandardMaterial {...eastMat.props} />
-        </mesh>
-      )}
-
-      {/* ── Enemy path glow (visible through buildings) ── */}
-      {/* ── Enemy path (main only) ── */}
-      <Line points={ALL_PATHS[0].map(p => [p.x, getElevation(p.x, p.z) + 0.6, p.z] as [number, number, number])}
-        color={PATH_COLORS[0]} lineWidth={10} opacity={0.15} transparent
-        depthTest={true} depthWrite={false} />
-      <Line points={ALL_PATHS[0].map(p => [p.x, getElevation(p.x, p.z) + 0.6, p.z] as [number, number, number])}
-        color={PATH_COLORS[0]} lineWidth={4} opacity={0.8} transparent
-        depthTest={true} depthWrite={false} />
-
-      {/* ── Street labels ── */}
-      {geos?.labels?.map((l) => (
-        <Html key={l.name} position={l.position} center transform scale={0.5}
-          style={{ pointerEvents: 'none', userSelect: 'none' }}>
-          <div style={{
-            color: 'rgba(255,255,255,0.5)', fontSize: '12px', fontWeight: 800,
-            letterSpacing: '0.15em', textTransform: 'uppercase',
-            textShadow: '0 0 8px rgba(0,0,0,0.9)', whiteSpace: 'nowrap',
-          }}>{l.name}</div>
-        </Html>
-      ))}
     </group>
   );
 }

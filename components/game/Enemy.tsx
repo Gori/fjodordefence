@@ -242,12 +242,12 @@ function EnemyUnit({
     // Follow terrain elevation at current interpolated position
     const currentTerrainY = getElevation(groupRef.current.position.x, groupRef.current.position.z);
     const targetY = currentTerrainY + (def.flying ? 5.0 : 0.5);
-    // Drop from sky on spawn
+    // Fade in from smoke — scale up over spawn duration
     const elapsed = Date.now() - spawnTime.current;
-    const dropT = Math.min(1, elapsed / DROP_DURATION);
-    const easeT = dropT * dropT; // ease-in quadratic — falls faster and faster
-    const dropHeight = 10;
-    groupRef.current.position.y = targetY + dropHeight * (1 - easeT); // starts high, accelerates down
+    const spawnT = Math.min(1, elapsed / DROP_DURATION);
+    const scaleT = spawnT * (2 - spawnT); // ease-out
+    groupRef.current.scale.setScalar(scaleT);
+    groupRef.current.position.y = targetY;
 
     // Rotate to face movement direction (models face -Z, so add PI)
     const dx = targetX - prevPos.current.x;

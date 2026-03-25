@@ -9,12 +9,17 @@ import { useGameStore } from '@/lib/store';
 
 export function GameClient() {
   const phase = useGameStore((s) => s.phase);
+  const selectedTowerDef = useGameStore((s) => s.selectedTowerDef);
+  const isPlaying = phase === 'playing' || phase === 'between-waves';
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-[#0c1828]">
+    <div
+      className={`relative w-screen h-screen overflow-hidden ${isPlaying && selectedTowerDef ? 'placing' : ''}`}
+      style={{ background: '#111' }}
+    >
       <GameCanvas />
       {phase === 'menu' && <StartScreen />}
-      {(phase === 'playing' || phase === 'between-waves') && (
+      {isPlaying && (
         <>
           <HUD />
           <TowerSelector />
