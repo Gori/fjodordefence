@@ -5,6 +5,7 @@ import { TOWER_DEFS } from '@/lib/towerDefs';
 import { getElevation } from '@/lib/elevation';
 import { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
+import { MeshBasicMaterial, MeshStandardMaterial } from 'three';
 import type { Group, Mesh } from 'three';
 
 const TOWER_SCALE = 0.45;
@@ -148,9 +149,11 @@ function LaserPointerTower({ position }: { position: [number, number, number] })
     // Tech rings chase-light effect
     ringsRef.current.forEach((ring, i) => {
       if (ring) {
-        const mat = ring.material as any;
+        const mat = ring.material;
         const phase = t * 3.0 + i * 2.1;
-        mat.emissiveIntensity = 0.3 + Math.max(0, Math.sin(phase)) * 0.8;
+        if (mat instanceof MeshStandardMaterial) {
+          mat.emissiveIntensity = 0.3 + Math.max(0, Math.sin(phase)) * 0.8;
+        }
       }
     });
   });
@@ -250,9 +253,8 @@ function CatnipBombTower({ position }: { position: [number, number, number] }) {
         child.position.x = Math.cos(t * 0.8 + i * 2.1) * radius;
         child.position.z = Math.sin(t * 0.8 + i * 2.1) * radius;
         // Fade out as they rise
-        const mat = child as any;
-        if (mat.material) {
-          mat.material.opacity = Math.max(0, 0.7 - cycle * 0.18);
+        if (child instanceof Mesh && child.material instanceof MeshStandardMaterial) {
+          child.material.opacity = Math.max(0, 0.7 - cycle * 0.18);
         }
       });
     }
@@ -343,8 +345,10 @@ function TowerBaseGlow({ x, z, y, color }: { x: number; z: number; y: number; co
 
   useFrame((state) => {
     if (ref.current) {
-      const mat = ref.current.material as any;
-      mat.opacity = 0.25 + Math.sin(state.clock.elapsedTime * 2.5) * 0.1;
+      const mat = ref.current.material;
+      if (mat instanceof MeshBasicMaterial) {
+        mat.opacity = 0.25 + Math.sin(state.clock.elapsedTime * 2.5) * 0.1;
+      }
     }
   });
 

@@ -55,6 +55,8 @@ export function useFlattenMaterial(opts: {
     uFlattenHeight: { value: FLATTEN_HEIGHT },
     uElevationMap: { value: elevTex },
   }), [elevTex]);
+  const enemyDataRef = useRef(uniforms.uEnemyData.value);
+  const enemyCountRef = useRef(uniforms.uEnemyCount);
 
   useFrame((_, delta) => {
     if (!matRef.current) return;
@@ -78,7 +80,7 @@ export function useFlattenMaterial(opts: {
     }
 
     // Write to uniform
-    const arr = uniforms.uEnemyData.value;
+    const arr = enemyDataRef.current;
     let activeCount = 0;
     for (let i = 0; i < MAX_ENEMIES; i++) {
       if (slots[i].intensity > 0.01) {
@@ -88,7 +90,8 @@ export function useFlattenMaterial(opts: {
         activeCount++;
       }
     }
-    uniforms.uEnemyCount.value = activeCount;
+    arr.fill(0, activeCount * 3);
+    enemyCountRef.current.value = activeCount;
   });
 
   const onBeforeCompile = useMemo(() => (shader: THREE.WebGLProgramParameters) => {

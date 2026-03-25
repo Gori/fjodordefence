@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, useEffect } from 'react';
+import { startTransition, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGameStore } from '@/lib/store';
 import { getElevation } from '@/lib/elevation';
@@ -21,19 +21,17 @@ export function ParticleEffects() {
   const enemies = useGameStore((s) => s.enemies);
   const [effects, setEffects] = useState<ParticleEffect[]>([]);
   const prevEnemyIds = useRef<Set<string>>(new Set());
-
-  // Track enemy spawns and deaths
-  useEffect(() => {
-    const currentIds = new Set(enemies.map(e => e.id));
+  const enemyPositions = useRef<Map<string, { x: number; z: number }>>(new Map());
+  useFrame(() => {
     const now = Date.now();
+    const currentIds = new Set(enemies.map((e) => e.id));
+    const nextEffects: ParticleEffect[] = [];
 
-    const newEffects: ParticleEffect[] = [];
-
-    // New enemies → smoke puff
     for (const enemy of enemies) {
+      enemyPositions.current.set(enemy.id, { x: enemy.position.x, z: enemy.position.z });
       if (!prevEnemyIds.current.has(enemy.id)) {
         const y = getElevation(enemy.position.x, enemy.position.z);
-        newEffects.push({
+        nextEffects.push({
           id: `smoke-${enemy.id}`,
           type: 'smoke',
           position: new THREE.Vector3(enemy.position.x, y + 0.5, enemy.position.z),
@@ -43,42 +41,30 @@ export function ParticleEffects() {
       }
     }
 
-    // Dead enemies → explosion
     for (const id of prevEnemyIds.current) {
       if (!currentIds.has(id)) {
-        // Find last known position from previous frame (approximate with 0,0)
-        // We'll store positions separately
-        newEffects.push({
+        const lastPosition = enemyPositions.current.get(id);
+        const x = lastPosition?.x ?? 0;
+        const z = lastPosition?.z ?? 0;
+        const y = getElevation(x, z);
+        nextEffects.push({
           id: `explode-${id}`,
           type: 'explosion',
-          position: new THREE.Vector3(0, 1, 0), // placeholder, updated below
+          position: new THREE.Vector3(x, y + 1, z),
           startTime: now,
           duration: EXPLOSION_DURATION,
         });
+        enemyPositions.current.delete(id);
       }
     }
 
     prevEnemyIds.current = currentIds;
 
-    if (newEffects.length > 0) {
-      setEffects(prev => [...prev.filter(e => now - e.startTime < e.duration), ...newEffects]);
-    }
-  }, [enemies]);
-
-  // Store enemy positions for death effects
-  const enemyPositions = useRef<Map<string, { x: number; z: number }>>(new Map());
-  useEffect(() => {
-    for (const e of enemies) {
-      enemyPositions.current.set(e.id, { x: e.position.x, z: e.position.z });
-    }
-  }, [enemies]);
-
-  // Clean up old effects
-  useFrame(() => {
-    const now = Date.now();
-    setEffects(prev => {
-      const filtered = prev.filter(e => now - e.startTime < e.duration);
-      return filtered.length !== prev.length ? filtered : prev;
+    startTransition(() => {
+      setEffects((prev) => {
+        const active = prev.filter((effect) => now - effect.startTime < effect.duration);
+        return nextEffects.length > 0 ? [...active, ...nextEffects] : active;
+      });
     });
   });
 
@@ -120,10 +106,10 @@ function ParticleCloud({ effect }: { effect: ParticleEffect }) {
     if (t >= 1) return;
 
     // Update particle positions
-    for (const p of particlesRef.current) {
-      p.offset.add(p.velocity.clone().multiplyScalar(delta));
-      p.velocity.y -= delta * 3; // gravity
-    }
+    particlesRef.current = particlesRef.current.map((particle) => ({
+      offset: particle.offset.clone().addScaledVector(particle.velocity, delta),
+      velocity: particle.velocity.clone().add(new THREE.Vector3(0, -delta * 3, 0)),
+    }));
 
     // Fade out
     groupRef.current.children.forEach((child, i) => {

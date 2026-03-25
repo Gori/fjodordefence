@@ -79,15 +79,6 @@ const ROOF_COLORS = [
   new THREE.Color('#7a6855'), new THREE.Color('#4a3a2c'),
 ];
 
-function polygonArea(coords: [number, number][]): number {
-  let area = 0;
-  for (let i = 0; i < coords.length; i++) {
-    const j = (i + 1) % coords.length;
-    area += coords[i][0] * coords[j][1] - coords[j][0] * coords[i][1];
-  }
-  return Math.abs(area) / 2;
-}
-
 // ── CRITICAL: Shape creation helper that negates Z ────────────────────
 // THREE.Shape lives in XY plane. After rotateX(-PI/2), Y becomes -Z.
 // To place shapes at the correct game Z, we must NEGATE Z in the shape.
@@ -232,58 +223,6 @@ function buildBuildings(buildings: BuildingData[]): {
     }
   }
   return { walls, roofs };
-}
-
-// ── Build road strip geometry (directly in 3D, no rotation needed) ────
-function buildRoadGeo(roads: RoadData[], widthMultiplier = 1): THREE.BufferGeometry | null {
-  const verts: number[] = [];
-  const idx: number[] = [];
-
-  for (const road of roads) {
-    if (road.coords.length < 2) continue;
-    const w = road.width * widthMultiplier;
-
-    for (let i = 0; i < road.coords.length - 1; i++) {
-      const [cx, cz] = road.coords[i];
-      const [nx, nz] = road.coords[i + 1];
-      const dx = nx - cx, dz = nz - cz;
-      const len = Math.sqrt(dx * dx + dz * dz);
-      if (len < 0.01) continue;
-      const px = (-dz / len) * w * 0.5, pz = (dx / len) * w * 0.5;
-      const vi = verts.length / 3;
-      const ey1 = getElevation(cx, cz) + 0.08;
-      const ey2 = getElevation(nx, nz) + 0.08;
-      verts.push(cx + px, ey1, cz + pz);
-      verts.push(cx - px, ey1, cz - pz);
-      verts.push(nx + px, ey2, nz + pz);
-      verts.push(nx - px, ey2, nz - pz);
-      idx.push(vi, vi + 1, vi + 2, vi + 1, vi + 3, vi + 2);
-    }
-  }
-
-  if (verts.length === 0) return null;
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
-  geo.setIndex(idx);
-  geo.computeVertexNormals();
-  return geo;
-}
-
-// ── Build park geometry ───────────────────────────────────────────────
-function buildParkGeo(parks: ParkData[]): THREE.BufferGeometry | null {
-  const geos: THREE.BufferGeometry[] = [];
-  for (const park of parks) {
-    if (park.coords.length < 3) continue;
-    try {
-      const shape = makeShape(park.coords); // Uses negated Z
-      const geo = new THREE.ShapeGeometry(shape);
-      geo.rotateX(-Math.PI / 2);
-      geo.translate(0, 0.05, 0);
-      geos.push(geo);
-    } catch { continue; }
-  }
-  if (geos.length === 0) return null;
-  try { return mergeGeometries(geos, false); } catch { return geos[0]; }
 }
 
 // ── Street labels ─────────────────────────────────────────────────────
@@ -481,14 +420,6 @@ export function Map() {
     if (simplified.length > 0 && simplified[simplified.length - 1] !== hull[hull.length - 1]) {
       simplified.push(hull[hull.length - 1]);
     }
-
-    // Pad outward slightly so green extends just past building edges
-    const hcx = simplified.reduce((s, p) => s + p[0], 0) / simplified.length;
-    const hcz = simplified.reduce((s, p) => s + p[1], 0) / simplified.length;
-    const padded = simplified.map(([x, z]) => [
-      hcx + (x - hcx) * 1.08,
-      hcz + (z - hcz) * 1.08,
-    ] as [number, number]);
 
     // Terrain mesh with elevation displacement + texture for coloring
     const gridRes = 200;

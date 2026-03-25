@@ -1,12 +1,15 @@
 'use client';
 
 import { useGameStore } from '@/lib/store';
+import { getElevation } from '@/lib/elevation';
 import { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import type { Mesh } from 'three';
 
 function ProjectileMesh({ position, special }: { position: { x: number; z: number }; special?: 'slow' | 'aoe' }) {
   const ref = useRef<Mesh>(null);
+  const terrainY = getElevation(position.x, position.z);
+  const y = terrainY + 1.5;
 
   useFrame((_, delta) => {
     if (ref.current) {
@@ -18,7 +21,7 @@ function ProjectileMesh({ position, special }: { position: { x: number; z: numbe
   const color = special === 'slow' ? '#e85d75' : special === 'aoe' ? '#4ade80' : '#fbbf24';
 
   return (
-    <mesh ref={ref} position={[position.x, 1.5, position.z]}>
+    <mesh ref={ref} position={[position.x, y, position.z]}>
       <octahedronGeometry args={[0.2, 0]} />
       <meshStandardMaterial
         color={color}

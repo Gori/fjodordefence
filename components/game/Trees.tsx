@@ -62,7 +62,7 @@ export function TreeMeshes() {
         for (const geo of [cone1, cone2]) {
           const colors = new Float32Array(geo.attributes.position.count * 3);
           for (let j = 0; j < geo.attributes.position.count; j++) {
-            const darkFactor = 0.85 + Math.random() * 0.15;
+            const darkFactor = 0.85 + ((Math.sin(i * 17.31 + j * 11.17) + 1) * 0.5) * 0.15;
             colors[j * 3] = cc.r * darkFactor;
             colors[j * 3 + 1] = cc.g * darkFactor;
             colors[j * 3 + 2] = cc.b * darkFactor;

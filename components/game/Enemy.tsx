@@ -11,9 +11,9 @@ import type { Group, Mesh } from 'three';
 // ── Rat ──────────────────────────────────────────────────────────────
 function RatMesh() {
   const bodyRef = useRef<Group>(null);
-  useFrame(() => {
+  useFrame((state) => {
     if (bodyRef.current) {
-      bodyRef.current.rotation.z = Math.sin(Date.now() * 0.015) * 0.1;
+      bodyRef.current.rotation.z = Math.sin(state.clock.elapsedTime * 15) * 0.1;
     }
   });
 
@@ -77,8 +77,8 @@ function RatMesh() {
 function PigeonMesh() {
   const rightWingRef = useRef<Mesh>(null);
   const leftWingRef = useRef<Mesh>(null);
-  useFrame(() => {
-    const flap = Math.sin(Date.now() * 0.01) * 0.4;
+  useFrame((state) => {
+    const flap = Math.sin(state.clock.elapsedTime * 10) * 0.4;
     if (rightWingRef.current) rightWingRef.current.rotation.z = -0.3 + flap;
     if (leftWingRef.current) leftWingRef.current.rotation.z = 0.3 - flap;
   });
@@ -128,8 +128,8 @@ function PigeonMesh() {
 // ── Dog ──────────────────────────────────────────────────────────────
 function DogMesh() {
   const tailRef = useRef<Mesh>(null);
-  useFrame(() => {
-    if (tailRef.current) tailRef.current.rotation.z = Math.sin(Date.now() * 0.008) * 0.4;
+  useFrame((state) => {
+    if (tailRef.current) tailRef.current.rotation.z = Math.sin(state.clock.elapsedTime * 8) * 0.4;
   });
 
   return (
@@ -223,8 +223,8 @@ function EnemyUnit({
   const y = terrainY + (def.flying ? 5.0 : 0.5);
   const groupRef = useRef<Group>(null);
   const prevPos = useRef({ x: enemy.position.x, z: enemy.position.z });
-  const spawnTime = useRef(Date.now());
-  const DROP_DURATION = 800; // ms to fall from sky
+  const spawnTime = useRef<number | null>(null);
+  const DROP_DURATION = 0.8; // seconds to scale in
 
   const MeshComponent = ENEMY_MESHES[enemy.defId];
 
@@ -233,6 +233,9 @@ function EnemyUnit({
 
   useFrame((_, delta) => {
     if (!groupRef.current) return;
+    if (spawnTime.current === null) {
+      spawnTime.current = performance.now() / 1000;
+    }
 
     const lerp = 1 - Math.pow(0.001, delta);
     const targetX = enemy.position.x;
@@ -243,7 +246,7 @@ function EnemyUnit({
     const currentTerrainY = getElevation(groupRef.current.position.x, groupRef.current.position.z);
     const targetY = currentTerrainY + (def.flying ? 5.0 : 0.5);
     // Fade in from smoke — scale up over spawn duration
-    const elapsed = Date.now() - spawnTime.current;
+    const elapsed = performance.now() / 1000 - spawnTime.current;
     const spawnT = Math.min(1, elapsed / DROP_DURATION);
     const scaleT = spawnT * (2 - spawnT); // ease-out
     groupRef.current.scale.setScalar(scaleT);
